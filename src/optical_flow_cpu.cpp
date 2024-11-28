@@ -62,7 +62,7 @@ void visualizeOpticalFlow(const float *u, const float *v, int width, int height,
 
             // Convert HSV to RGB
             float h = angle / 60.0f; // [0, 6)
-            float s = 1.0f;
+            float s = 0.5f;
             float v = normMagnitude;
 
             int hi = (int)h % 6;
@@ -115,10 +115,8 @@ int main(int argc, char **argv) {
     float *v = (float *)calloc(height * stride, sizeof(float));
     unsigned char *output = (unsigned char*)calloc(height * stride * 3, sizeof(unsigned char));
 
-    int i = 0;
-    while (i < 2)
+    while (true)
     {
-        i++;
         int ret = cap.read(frame);
         cv::cvtColor(frame, frame, cv::COLOR_BGR2GRAY);
 
@@ -141,15 +139,9 @@ int main(int argc, char **argv) {
         computeOpticalFlow(Ix, Iy, It, width, height, stride, u, v);
         visualizeOpticalFlow(u, v, width, height, stride, output);
 
-        cv::Mat opflow(height, width, CV_8U, output);
+        cv::Mat opflow(height, width, CV_8UC3, output);
         cv::cvtColor(opflow, opflow, cv::COLOR_RGB2BGR);
         
         cv::imshow("Optical Flow Display", opflow);
-
     }
-
-
-    
-    
-
 }
