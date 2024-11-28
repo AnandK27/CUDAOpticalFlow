@@ -4,6 +4,7 @@
 #include <math.h>
 using namespace std;
 
+// TODO: Make this an argument??
 #define WIN_SIZE 5  // Window size for Lucas-Kanade method
 
 // Compute image gradients using Sobel operator
@@ -118,6 +119,7 @@ int main(int argc, char **argv) {
     while (true)
     {
         int ret = cap.read(frame);
+        if (!ret) break;
         cv::cvtColor(frame, frame, cv::COLOR_BGR2GRAY);
 
         cv::imshow("Frame Dispaly", frame);
