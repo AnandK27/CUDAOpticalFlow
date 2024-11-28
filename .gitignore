@@ -1,0 +1,7 @@
+*.png
+*.jpeg
+*.jpg 
+*.mp4
+*.mov
+*.vscode*
+build/*
