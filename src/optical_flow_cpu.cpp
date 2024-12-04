@@ -142,7 +142,7 @@ int main(int argc, char **argv) {
         visualizeOpticalFlow(u, v, width, height, stride, output);
 
         cv::Mat opflow(height, width, CV_8UC3, output);
-        cv::cvtColor(opflow, opflow, cv::COLOR_RGB2BGR);
+        cv::cvtColor(opflow, opflow, cv::COLOR_HSV2BGR);
         
         cv::imshow("Optical Flow Display", opflow);
     }
