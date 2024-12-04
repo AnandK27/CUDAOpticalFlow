@@ -56,33 +56,33 @@ void visualizeOpticalFlow(const float *u, const float *v, int width, int height,
             int idx = y * stride + x;
 
             float magnitude = sqrt(u[idx] * u[idx] + v[idx] * v[idx]);
-            float angle = (float)atan2(v[idx], u[idx]) * 180.0f / CV_PI; // Convert to degrees
-            if (angle < 0) angle += 360;
+            float angle = (float)atan2(v[idx], u[idx]) * 180.0f / CV_PI + 180.0f; // Convert to degrees
+            //if (angle < 0) angle += 360;
 
-            float normMagnitude = fmin(magnitude / 10.0f, 1.0f); // Normalize magnitude
+            float normMagnitude = fmin(magnitude / 10.0f, 1.0f); // Clipping magnitude
 
             // Convert HSV to RGB
-            float h = angle / 60.0f; // [0, 6)
+            float h = angle / 2.0f; // [0, 6)
             float s = 0.5f;
             float v = normMagnitude;
 
-            int hi = (int)h % 6;
-            float f = h - hi;
-            float p = v * (1 - s);
-            float q = v * (1 - f * s);
-            float t = v * (1 - (1 - f) * s);
+            //int hi = (int)h % 6;
+            //float f = h - hi;
+            //float p = v * (1 - s);
+            //float q = v * (1 - f * s);
+            //float t = v * (1 - (1 - f) * s);
 
-            float r, g, b;
-            if (hi == 0) { r = v; g = t; b = p; }
-            else if (hi == 1) { r = q; g = v; b = p; }
-            else if (hi == 2) { r = p; g = v; b = t; }
-            else if (hi == 3) { r = p; g = q; b = v; }
-            else if (hi == 4) { r = t; g = p; b = v; }
-            else { r = v; g = p; b = q; }
+            //float r, g, b;
+            //if (hi == 0) { r = v; g = t; b = p; }
+            //else if (hi == 1) { r = q; g = v; b = p; }
+            //else if (hi == 2) { r = p; g = v; b = t; }
+            //else if (hi == 3) { r = p; g = q; b = v; }
+            //else if (hi == 4) { r = t; g = p; b = v; }
+            //else { r = v; g = p; b = q; }
 
-            output[idx * 3 + 0] = (unsigned char)(r * 255);
-            output[idx * 3 + 1] = (unsigned char)(g * 255);
-            output[idx * 3 + 2] = (unsigned char)(b * 255);
+            output[idx * 3 + 0] = (unsigned char)(h);
+            output[idx * 3 + 1] = (unsigned char)(s * 255);
+            output[idx * 3 + 2] = (unsigned char)(v * 255);
         }
     }
 }
@@ -100,10 +100,11 @@ int main(int argc, char **argv) {
         return -1;
     }
 
-    int width = (int)cap.get(cv::CAP_PROP_FRAME_WIDTH);
-    int height = (int)cap.get(cv::CAP_PROP_FRAME_HEIGHT);
+    int width = 512;
+    int height = 512;
     cout << width << " " << height << endl;
     int stride = width;
+
 
     cv::Mat frame;
     unsigned char *temp = NULL;
@@ -121,7 +122,8 @@ int main(int argc, char **argv) {
         int ret = cap.read(frame);
         if (!ret) break;
         cv::cvtColor(frame, frame, cv::COLOR_BGR2GRAY);
-
+		// resize the frame to 512x512
+		cv::resize(frame, frame, cv::Size(width, height));
         cv::imshow("Frame Dispaly", frame);
         double fps = cap.get(cv::CAP_PROP_FPS);
         int delay = static_cast<int>(1000 / fps); // Delay between frames in milliseconds
@@ -142,7 +144,7 @@ int main(int argc, char **argv) {
         visualizeOpticalFlow(u, v, width, height, stride, output);
 
         cv::Mat opflow(height, width, CV_8UC3, output);
-        cv::cvtColor(opflow, opflow, cv::COLOR_RGB2BGR);
+        cv::cvtColor(opflow, opflow, cv::COLOR_HSV2BGR);
         
         cv::imshow("Optical Flow Display", opflow);
     }

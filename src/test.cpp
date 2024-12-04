@@ -6,7 +6,7 @@ int main(int argc, char** argv )
 {
 
     Mat image;
-    image = imread("D:/UCSD/FA24/ECE277_GPU/Project/CUDAOpticalFlow/src/lenna.png");
+    image = imread("C:/Users/anand/Desktop/yes.png");
     if ( !image.data )
     {
         printf("No image data \n");
