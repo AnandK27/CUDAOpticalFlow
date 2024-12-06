@@ -7,7 +7,7 @@
 #include <stdio.h>
 #include <iostream>
 
-#define BLOCK_SIZE 30
+#define BLOCK_SIZE 32
 #define WIN_SIZE 3
 cudaError_t addWithCuda(int *c, const int *a, const int *b, unsigned int size);
 
@@ -81,23 +81,67 @@ __global__ void getDerivatives_2(int* Ix, int* Iy, int* It, int* I1, int* I2, in
 
 __global__ void computeOpticalFlow_GPU(int* Ix, int* Iy, int* It, int width, int height, int stride, int* u, int* v)
 {
-	int y = blockIdx.y * blockDim.y + threadIdx.y + (WIN_SIZE / 2);
-	int x = blockIdx.x * blockDim.x + threadIdx.x + (WIN_SIZE / 2);
 
-	if (x >= (width - WIN_SIZE / 2) || y >= (height - WIN_SIZE / 2)) {
+	__shared__ int Ix_shared[BLOCK_SIZE + WIN_SIZE - 1][BLOCK_SIZE + WIN_SIZE - 1];
+	__shared__ int Iy_shared[BLOCK_SIZE + WIN_SIZE - 1][BLOCK_SIZE + WIN_SIZE - 1];
+	__shared__ int It_shared[BLOCK_SIZE + WIN_SIZE - 1][BLOCK_SIZE + WIN_SIZE - 1];
+
+	int x = threadIdx.x + blockIdx.x * blockDim.x;
+	int y = threadIdx.y + blockIdx.y * blockDim.y;
+
+	int idx = y * stride + x;
+
+	Ix_shared[threadIdx.y + WIN_SIZE / 2][threadIdx.x + WIN_SIZE / 2] = Ix[idx];
+	Iy_shared[threadIdx.y + WIN_SIZE / 2][threadIdx.x + WIN_SIZE / 2] = Iy[idx];
+	It_shared[threadIdx.y + WIN_SIZE / 2][threadIdx.x + WIN_SIZE / 2] = It[idx];
+
+	if (threadIdx.x < WIN_SIZE / 2 && x > 0)
+	{
+		Ix_shared[threadIdx.y + WIN_SIZE / 2][threadIdx.x] = Ix[idx - WIN_SIZE / 2];
+		Iy_shared[threadIdx.y + WIN_SIZE / 2][threadIdx.x] = Iy[idx - WIN_SIZE / 2];
+		It_shared[threadIdx.y + WIN_SIZE / 2][threadIdx.x] = It[idx - WIN_SIZE / 2];
+	}
+
+	if (threadIdx.x >= blockDim.x - WIN_SIZE / 2 && x < width - 1)
+	{
+		Ix_shared[threadIdx.y + WIN_SIZE / 2][threadIdx.x + WIN_SIZE - 1] = Ix[idx + WIN_SIZE / 2];
+		Iy_shared[threadIdx.y + WIN_SIZE / 2][threadIdx.x + WIN_SIZE - 1] = Iy[idx + WIN_SIZE / 2];
+		It_shared[threadIdx.y + WIN_SIZE / 2][threadIdx.x + WIN_SIZE - 1] = It[idx + WIN_SIZE / 2];
+	}
+
+	if (threadIdx.y < WIN_SIZE / 2 && y > 0)
+	{
+		Ix_shared[threadIdx.y][threadIdx.x + WIN_SIZE / 2] = Ix[idx - WIN_SIZE / 2 * stride];
+		Iy_shared[threadIdx.y][threadIdx.x + WIN_SIZE / 2] = Iy[idx - WIN_SIZE / 2 * stride];
+		It_shared[threadIdx.y][threadIdx.x + WIN_SIZE / 2] = It[idx - WIN_SIZE / 2 * stride];
+	}
+
+	if (threadIdx.y >= blockDim.y - WIN_SIZE / 2 && y < height - 1)
+	{
+		Ix_shared[threadIdx.y + WIN_SIZE - 1][threadIdx.x + WIN_SIZE / 2] = Ix[idx + WIN_SIZE / 2 * stride];
+		Iy_shared[threadIdx.y + WIN_SIZE - 1][threadIdx.x + WIN_SIZE / 2] = Iy[idx + WIN_SIZE / 2 * stride];
+		It_shared[threadIdx.y + WIN_SIZE - 1][threadIdx.x + WIN_SIZE / 2] = It[idx + WIN_SIZE / 2 * stride];
+	}
+
+	__syncthreads();
+	if (x < WIN_SIZE / 2 || x >= width - WIN_SIZE / 2 || y < WIN_SIZE / 2 || y >= height - WIN_SIZE / 2)
+	{
+		u[y * stride + x] = 0;
+		v[y * stride + x] = 0;
 		return;
 	}
 
 	float sumIx2 = 0, sumIy2 = 0, sumIxIy = 0, sumIxIt = 0, sumIyIt = 0;
-
-	for (int wy = -WIN_SIZE / 2; wy <= WIN_SIZE / 2; wy++) {
-		for (int wx = -WIN_SIZE / 2; wx <= WIN_SIZE / 2; wx++) {
-			int idx = (y + wy) * stride + (x + wx);
-			sumIx2 += Ix[idx] * Ix[idx];
-			sumIy2 += Iy[idx] * Iy[idx];
-			sumIxIy += Ix[idx] * Iy[idx];
-			sumIxIt += Ix[idx] * It[idx];
-			sumIyIt += Iy[idx] * It[idx];
+	// Compute the sums
+	for (int wy = -WIN_SIZE / 2; wy <= WIN_SIZE / 2; wy++)
+	{
+		for (int wx = -WIN_SIZE / 2; wx <= WIN_SIZE / 2; wx++)
+		{
+			sumIx2 += Ix_shared[threadIdx.y + wy + WIN_SIZE / 2][threadIdx.x + wx + WIN_SIZE / 2] * Ix_shared[threadIdx.y + wy + WIN_SIZE / 2][threadIdx.x + wx + WIN_SIZE / 2];
+			sumIy2 += Iy_shared[threadIdx.y + wy + WIN_SIZE / 2][threadIdx.x + wx + WIN_SIZE / 2] * Iy_shared[threadIdx.y + wy + WIN_SIZE / 2][threadIdx.x + wx + WIN_SIZE / 2];
+			sumIxIy += Ix_shared[threadIdx.y + wy + WIN_SIZE / 2][threadIdx.x + wx + WIN_SIZE / 2] * Iy_shared[threadIdx.y + wy + WIN_SIZE / 2][threadIdx.x + wx + WIN_SIZE / 2];
+			sumIxIt += Ix_shared[threadIdx.y + wy + WIN_SIZE / 2][threadIdx.x + wx + WIN_SIZE / 2] * It_shared[threadIdx.y + wy + WIN_SIZE / 2][threadIdx.x + wx + WIN_SIZE / 2];
+			sumIyIt += Iy_shared[threadIdx.y + wy + WIN_SIZE / 2][threadIdx.x + wx + WIN_SIZE / 2] * It_shared[threadIdx.y + wy + WIN_SIZE / 2][threadIdx.x + wx + WIN_SIZE / 2];
 		}
 	}
 
@@ -272,8 +316,18 @@ int main()
 	// Compare the results
 	float error = 0;
 	for (int i = 0; i < width * height; i++) {
-		if (abs(u[i] - u_cpu[i]) > 0) {
-			std::cout << i << " " << u[i] << " " << u_cpu[i] << std::endl;
+		if (abs(Ix[i] - Ix_cpu[i]) > 0) {
+			std::cout << "Ix:" << i << " " << Ix[i] << " " << Ix_cpu[i] << std::endl;
+		}
+		if (abs(Iy[i] - Iy_cpu[i]) > 0) {
+			std::cout << "Iy:" << i << " " << Ix[i] << " " << Ix_cpu[i] << std::endl;
+		}
+		if (abs(It[i] - It_cpu[i]) > 0) {
+			std::cout << "It:" << i << " " << It[i] << " " << It_cpu[i] << std::endl;
+		}
+		if (abs(v[i] - v_cpu[i]) > 0) {
+			std::cout << "u:" << i << " " << u[i] << " " << u_cpu[i] << std::endl;
+			std::cout << "v:" << i << " " << v[i] << " " << v_cpu[i] << std::endl;
 		}
 		error += abs(Ix[i] - Ix_cpu[i]) + abs(Iy[i] - Iy_cpu[i]) + abs(It[i] - It_cpu[i]) + abs(u[i] - u_cpu[i]) + abs(v[i] - v_cpu[i]);
 	}
