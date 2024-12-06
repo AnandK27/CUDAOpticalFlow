@@ -55,9 +55,13 @@ C:\opencv\build\include\opencv2/stitching/detail/blenders.hpp(127): warning #611
            ^
   
   kernel.cu
-  tmpxft_00002b70_00000000-7_kernel.cudafe1.cpp
+  tmpxft_00007a40_00000000-7_kernel.cudafe1.cpp
   device_functions.h is an internal header file and must not be used directly.  This file will be removed in a future CUDA release.  Please use cuda_runtime_api.h or cuda_runtime.h instead.
-C:\Users\anand\Documents\Downloads\CUDAOpticalFlow\CUDAOpticalFlow\OpticalFlow\kernel.cu(90): warning C4244: '=': conversion from 'float' to 'int', possible loss of data
-C:\Users\anand\Documents\Downloads\CUDAOpticalFlow\CUDAOpticalFlow\OpticalFlow\kernel.cu(91): warning C4244: '=': conversion from 'float' to 'int', possible loss of data
-C:\Users\anand\Documents\Downloads\CUDAOpticalFlow\CUDAOpticalFlow\OpticalFlow\kernel.cu(92): warning C4244: '=': conversion from 'float' to 'int', possible loss of data
+C:\Users\anand\Documents\Downloads\CUDAOpticalFlow\CUDAOpticalFlow\OpticalFlow\kernel.cu(121): warning C4244: '=': conversion from 'float' to 'int', possible loss of data
+C:\Users\anand\Documents\Downloads\CUDAOpticalFlow\CUDAOpticalFlow\OpticalFlow\kernel.cu(122): warning C4244: '=': conversion from 'float' to 'int', possible loss of data
+C:\Users\anand\Documents\Downloads\CUDAOpticalFlow\CUDAOpticalFlow\OpticalFlow\kernel.cu(123): warning C4244: '=': conversion from 'float' to 'int', possible loss of data
+C:\Users\anand\Documents\Downloads\CUDAOpticalFlow\CUDAOpticalFlow\OpticalFlow\kernel.cu(148): warning C4244: '=': conversion from 'float' to 'int', possible loss of data
+C:\Users\anand\Documents\Downloads\CUDAOpticalFlow\CUDAOpticalFlow\OpticalFlow\kernel.cu(149): warning C4244: '=': conversion from 'float' to 'int', possible loss of data
+     Creating library C:\Users\anand\Documents\Downloads\CUDAOpticalFlow\CUDAOpticalFlow\x64\Debug\OpticalFlow.lib and object C:\Users\anand\Documents\Downloads\CUDAOpticalFlow\CUDAOpticalFlow\x64\Debug\OpticalFlow.exp
+LINK : warning LNK4098: defaultlib 'LIBCMT' conflicts with use of other libs; use /NODEFAULTLIB:library
   OpticalFlow.vcxproj -> C:\Users\anand\Documents\Downloads\CUDAOpticalFlow\CUDAOpticalFlow\x64\Debug\OpticalFlow.exe
