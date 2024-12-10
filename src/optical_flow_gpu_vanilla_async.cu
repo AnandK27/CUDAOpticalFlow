@@ -212,14 +212,20 @@ int main(int argc, char** argv) {
     // CPU Memory Allocation
     cv::Mat frame;
     unsigned char* temp = NULL;
-    unsigned char* I1 = (unsigned char*)malloc(height * stride);
-    unsigned char* I2 = (unsigned char*)malloc(height * stride);
+    unsigned char* I1; // = (unsigned char*)malloc(height * stride);
+    unsigned char* I2; // = (unsigned char*)malloc(height * stride);
     float* Ix = (float*)calloc(height * stride, sizeof(float));
     float* Iy = (float*)calloc(height * stride, sizeof(float));
     float* It = (float*)calloc(height * stride, sizeof(float));
-    float* u = (float*)calloc(height * stride, sizeof(float));
-    float* v = (float*)calloc(height * stride, sizeof(float));
+    float* u; // = (float*)calloc(height * stride, sizeof(float));
+    float* v; // = (float*)calloc(height * stride, sizeof(float));
     unsigned char* output = (unsigned char*)calloc(height * stride * 3, sizeof(unsigned char));
+
+    // DMA Alloc
+    cudaHostAlloc((void**)&I1, height * width, cudaHostAllocDefault);
+    cudaHostAlloc((void**)&I2, height * width, cudaHostAllocDefault);
+    cudaHostAlloc((void**)&u, size, cudaHostAllocDefault);
+    cudaHostAlloc((void**)&v, size, cudaHostAllocDefault);
 
     // GPU Memory Allocation
     unsigned char* d_I1, * d_I2;
@@ -277,7 +283,8 @@ int main(int argc, char** argv) {
         d_I2 = temp;
 
         memcpy(I2, frame.data, height * width * sizeof(unsigned char));
-        cudaMemcpy(d_I2, frame.data, height * width * sizeof(unsigned char), cudaMemcpyHostToDevice);
+        //cudaMemcpy(d_I2, frame.data, height * width * sizeof(unsigned char), cudaMemcpyHostToDevice);
+        cudaMemcpyAsync(d_I2, I2, height * width * sizeof(unsigned char), cudaMemcpyHostToDevice);
 
 #if CPU
         computeGradients(I2, width, height, stride, Ix, Iy, It, I1);
@@ -310,8 +317,10 @@ int main(int argc, char** argv) {
         dim3 numBlocks2(width / threadsPerBlock2.x, height / threadsPerBlock2.y);
         cudaComputeOpticalFlow << <numBlocks2, threadsPerBlock2 >> > (d_Ix, d_Iy, d_It, width, height, stride, d_u, d_v);
 
-        cudaMemcpy(u_cpu, d_u, size, cudaMemcpyDeviceToHost);
-        cudaMemcpy(v_cpu, d_v, size, cudaMemcpyDeviceToHost);
+        cudaMemcpyAsync(u_cpu, d_u, size, cudaMemcpyDeviceToHost);
+        cudaMemcpyAsync(v_cpu, d_v, size, cudaMemcpyDeviceToHost);
+        //cudaMemcpy(u_cpu, d_u, size, cudaMemcpyDeviceToHost);
+        //cudaMemcpy(v_cpu, d_v, size, cudaMemcpyDeviceToHost);
 
 #if DISPLAY_STREAMS
         visualizeOpticalFlow(u_cpu, v_cpu, width, height, stride, output);
@@ -355,13 +364,18 @@ int main(int argc, char** argv) {
 
     cout << "Calculated FPS: " << calc_fps << "\n";
 
-    free(I1);
-    free(I2);
+    //free(I1);
+    //free(I2);
     free(Ix);
     free(Iy);
     free(It);
-    free(u);
-    free(v);
+    //free(u);
+    //free(v);
+
+    cudaFreeHost(I1);
+    cudaFreeHost(I2);
+    cudaFreeHost(u);
+    cudaFreeHost(v);
 
     cudaFree(d_I1);
     cudaFree(d_I2);
