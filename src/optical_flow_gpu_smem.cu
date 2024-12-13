@@ -8,7 +8,7 @@
 //#include <device_functions.h>
 using namespace std;
 
-#define WIN_SIZE 13  // Window size for Lucas-Kanade method
+#define WIN_SIZE 5  // Window size for Lucas-Kanade method
 #define BLOCK_SIZE 32
 
 #define DISPLAY_STREAMS false
@@ -29,18 +29,18 @@ using namespace std;
 } \
 
 /********************************
-* 
+*
 *   CPU Code
-* 
+*
 *********************************/
 // Compute image gradients using Sobel operator
 void computeGradients(const unsigned char* I1, int width, int height, int stride, float* Ix, float* Iy, float* It, const unsigned char* I2) {
-    for (int y = 2; y < height - 2; y++) {
-        for (int x = 2; x < width - 2; x++) {
+    for (int y = 1; y < height - 1; y++) {
+        for (int x = 1; x < width - 1; x++) {
             int idx = y * stride + x;
 
-            Ix[idx] = (-1.0f * I1[idx + 2] + 8.0f * I1[idx + 1] - 8.0f * I1[idx - 1] + 1.0f * I1[idx - 2] - 1.0f * I2[idx + 2] + 8.0f * I2[idx + 1] - 8.0f * I2[idx - 1] + 1.0f * I2[idx - 2]) / 24.0f;
-            Iy[idx] = (-1.0f * I1[idx + 2 * stride] + 8.0f * I1[idx + stride] - 8.0f * I1[idx - stride] + 1.0f * I1[idx - 2 * stride] - 1.0f * I2[idx + 2 * stride] + 8.0f * I2[idx + stride] - 8.0f * I2[idx - stride] + 1.0f * I2[idx - 2 * stride]) / 24.0f;
+            Ix[idx] = (I1[idx + 1] - I1[idx - 1] + I2[idx + 1] - I2[idx - 1]) / 4.0f;
+            Iy[idx] = (I1[idx + stride] - I1[idx - stride] + I2[idx + stride] - I2[idx - stride]) / 4.0f;
             It[idx] = (float)(I1[idx] - I2[idx]);
         }
     }
@@ -88,12 +88,10 @@ __global__ void cudaComputeGradients(float* Ix, float* Iy, float* It, const unsi
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     int j = threadIdx.y + blockIdx.y * blockDim.y;
     int idx = i + j * width;
-    if (i > 1 && i < width - 2 && j > 1 && j < height - 2)
+    if (i > 0 && i < width - 1 && j > 0 && j < height - 1)
     {
-        //Ix[idx] = (I1[idx + 1] - I1[idx - 1] + I2[idx + 1] - I2[idx - 1]) / 4.0f;
-        //Iy[idx] = (I1[idx + width] - I1[idx - width] + I2[idx + width] - I2[idx - width]) / 4.0f;
-        Ix[idx] = (-1.0f * I1[idx + 2] + 8.0f * I1[idx + 1] - 8.0f * 1.0f * I1[idx - 1] + 1.0f * I1[idx - 2] - I2[idx + 2] + 8.0f * I2[idx + 1] - 8.0f * I2[idx - 1] + 1.0f * I2[idx - 2]) / 24.0f;
-        Iy[idx] = (-1.0f * I1[idx + 2 * width] + 8.0f * I1[idx + width] - 8.0f * I1[idx - width] + 1.0f * I1[idx - 2 * width] - 1.0f * I2[idx + 2 * width] + 8.0f * I2[idx + width] - 8.0f * I2[idx - width] + 1.0f * I2[idx - 2 * width]) / 24.0f;
+        Ix[idx] = (I1[idx + 1] - I1[idx - 1] + I2[idx + 1] - I2[idx - 1]) / 4.0f;
+        Iy[idx] = (I1[idx + width] - I1[idx - width] + I2[idx + width] - I2[idx - width]) / 4.0f;
         It[idx] = (I2[idx] - I1[idx]);
     }
 }
@@ -102,62 +100,48 @@ __global__ void cudaComputeGradients(float* Ix, float* Iy, float* It, const unsi
 __global__ void cudaComputeGradients2(float* Ix, float* Iy, float* It, const unsigned char* I1, const unsigned char* I2, int width, int height)
 {
 
-    __shared__ int I1_shared[BLOCK_SIZE / N + 4][BLOCK_SIZE + 4];
-    __shared__ int I2_shared[BLOCK_SIZE / N + 4][BLOCK_SIZE + 4];
+    __shared__ int I1_shared[BLOCK_SIZE / N + 2][BLOCK_SIZE + 2];
+    __shared__ int I2_shared[BLOCK_SIZE / N + 2][BLOCK_SIZE + 2];
 
     int x = threadIdx.x + blockIdx.x * blockDim.x;
     int y = threadIdx.y + blockIdx.y * blockDim.y;
     int idx = x + y * width;
 
-    I1_shared[threadIdx.y + 2][threadIdx.x + 2] = I1[idx];
-    I2_shared[threadIdx.y + 2][threadIdx.x + 2] = I2[idx];
+    I1_shared[threadIdx.y + 1][threadIdx.x + 1] = I1[idx];
+    I2_shared[threadIdx.y + 1][threadIdx.x + 1] = I2[idx];
 
 
     if (threadIdx.x == 0 && x > 0)
     {
-        I1_shared[threadIdx.y + 2][threadIdx.x+1] = I1[idx - 1];
-        I2_shared[threadIdx.y + 2][threadIdx.x+1] = I2[idx - 1];
-
-        I1_shared[threadIdx.y + 2][threadIdx.x] = I1[idx - 2];
-        I2_shared[threadIdx.y + 2][threadIdx.x] = I2[idx - 2];
+        I1_shared[threadIdx.y + 1][threadIdx.x] = I1[idx - 1];
+        I2_shared[threadIdx.y + 1][threadIdx.x] = I2[idx - 1];
     }
 
     if (threadIdx.x == blockDim.x - 1 && x < width - 1)
     {
-        I1_shared[threadIdx.y + 2][threadIdx.x + 3] = I1[idx + 1];
-        I2_shared[threadIdx.y + 2][threadIdx.x + 3] = I2[idx + 1];
-
-        I1_shared[threadIdx.y + 2][threadIdx.x + 4] = I1[idx + 2];
-        I2_shared[threadIdx.y + 2][threadIdx.x + 4] = I2[idx + 2];
+        I1_shared[threadIdx.y + 1][threadIdx.x + 2] = I1[idx + 1];
+        I2_shared[threadIdx.y + 1][threadIdx.x + 2] = I2[idx + 1];
     }
 
     if (threadIdx.y == 0 && y > 0)
     {
-        I1_shared[threadIdx.y+1][threadIdx.x + 2] = I1[idx - width];
-        I2_shared[threadIdx.y+1][threadIdx.x + 2] = I2[idx - width];
-
-        I1_shared[threadIdx.y][threadIdx.x + 2] = I1[idx - 2*width];
-        I2_shared[threadIdx.y][threadIdx.x + 2] = I2[idx - 2*width];
+        I1_shared[threadIdx.y][threadIdx.x + 1] = I1[idx - width];
+        I2_shared[threadIdx.y][threadIdx.x + 1] = I2[idx - width];
     }
 
     if (threadIdx.y == blockDim.y - 1 && y < height - 1)
     {
-        I1_shared[threadIdx.y + 3][threadIdx.x + 2] = I1[idx + width];
-        I2_shared[threadIdx.y + 3][threadIdx.x + 2] = I2[idx + width];
-
-        I1_shared[threadIdx.y + 4][threadIdx.x + 2] = I1[idx + 2*width];
-        I2_shared[threadIdx.y + 4][threadIdx.x + 2] = I2[idx + 2*width];
+        I1_shared[threadIdx.y + 2][threadIdx.x + 1] = I1[idx + width];
+        I2_shared[threadIdx.y + 2][threadIdx.x + 1] = I2[idx + width];
     }
 
     // Wait for all threads to finish copying
     __syncthreads();
 
-    if (x > 1 && x < width - 2 && y > 1 && y < height - 2) {
-        //Ix[idx] = (I1_shared[threadIdx.y + 1][threadIdx.x + 2] - I1_shared[threadIdx.y + 1][threadIdx.x] + I2_shared[threadIdx.y + 1][threadIdx.x + 2] - I2_shared[threadIdx.y + 1][threadIdx.x]) / 4.0f;
-        //Iy[idx] = (I1_shared[threadIdx.y + 2][threadIdx.x + 1] - I1_shared[threadIdx.y][threadIdx.x + 1] + I2_shared[threadIdx.y + 2][threadIdx.x + 1] - I2_shared[threadIdx.y][threadIdx.x + 1]) / 4.0f;
-        Ix[idx] = (-1.0f * I1_shared[threadIdx.y + 2][threadIdx.x+4] + 8.0f * I1_shared[threadIdx.y + 2][threadIdx.x+3] - 8.0f * I1_shared[threadIdx.y + 2][threadIdx.x+1] + 1.0f * I1_shared[threadIdx.y + 2][threadIdx.x] -1.0f * I2_shared[threadIdx.y + 2][threadIdx.x + 4] + 8.0f * I2_shared[threadIdx.y + 2][threadIdx.x + 3] - 8.0f * I2_shared[threadIdx.y + 2][threadIdx.x + 1] + 1.0f * I2_shared[threadIdx.y + 2][threadIdx.x]) / 24.0f;
-        Iy[idx] = (-1.0f * I1_shared[threadIdx.y + 4][threadIdx.x + 2] + 8.0f * I1_shared[threadIdx.y + 3][threadIdx.x + 2] - 8.0f * I1_shared[threadIdx.y + 1][threadIdx.x + 2] + 1.0f * I1_shared[threadIdx.y][threadIdx.x + 2] - 1.0f * I2_shared[threadIdx.y + 4][threadIdx.x + 2] + 8.0f * I2_shared[threadIdx.y + 3][threadIdx.x + 2] - 8.0f * I2_shared[threadIdx.y + 1][threadIdx.x + 2] + 1.0f * I2_shared[threadIdx.y][threadIdx.x + 2]) / 24.0f;
-        It[idx] = (I2_shared[threadIdx.y + 2][threadIdx.x + 2] - I1_shared[threadIdx.y + 2][threadIdx.x + 2]);
+    if (x > 0 && x < width - 1 && y > 0 && y < height - 1) {
+        Ix[idx] = (I1_shared[threadIdx.y + 1][threadIdx.x + 2] - I1_shared[threadIdx.y + 1][threadIdx.x] + I2_shared[threadIdx.y + 1][threadIdx.x + 2] - I2_shared[threadIdx.y + 1][threadIdx.x]) / 4.0f;
+        Iy[idx] = (I1_shared[threadIdx.y + 2][threadIdx.x + 1] - I1_shared[threadIdx.y][threadIdx.x + 1] + I2_shared[threadIdx.y + 2][threadIdx.x + 1] - I2_shared[threadIdx.y][threadIdx.x + 1]) / 4.0f;
+        It[idx] = (I2_shared[threadIdx.y + 1][threadIdx.x + 1] - I1_shared[threadIdx.y + 1][threadIdx.x + 1]);
     }
 }
 
@@ -490,8 +474,8 @@ int main(int argc, char** argv) {
 #endif
 
         dim3 threadsPerBlock(BLOCK_SIZE, BLOCK_SIZE / N);
-        dim3 numBlocks(width / threadsPerBlock.x, height / threadsPerBlock.y);      
-        cudaComputeGradients<< <numBlocks, threadsPerBlock >> > (d_Ix, d_Iy, d_It, d_I1, d_I2, width, height);
+        dim3 numBlocks(width / threadsPerBlock.x, height / threadsPerBlock.y);
+        cudaComputeGradients2 << <numBlocks, threadsPerBlock >> > (d_Ix, d_Iy, d_It, d_I1, d_I2, width, height);
 
 #if DEBUG
         cudaMemcpy(Ix_cpu, d_Ix, size, cudaMemcpyDeviceToHost);
@@ -528,11 +512,11 @@ int main(int argc, char** argv) {
             compare(v_cpu, v, width, height, "V");
         }
 
-       /* writeToFile(u, width, height, "U.csv");
-        writeToFile(v, width, height, "V.csv");
-        
-        writeToFile(u_cpu, width, height, "U_gpu.csv");
-        writeToFile(v_cpu, width, height, "V_gpu.csv");*/
+        /* writeToFile(u, width, height, "U.csv");
+         writeToFile(v, width, height, "V.csv");
+
+         writeToFile(u_cpu, width, height, "U_gpu.csv");
+         writeToFile(v_cpu, width, height, "V_gpu.csv");*/
 #endif
 
         time_t tock = time(NULL);

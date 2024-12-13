@@ -108,16 +108,180 @@ __global__ void cudaComputeOpticalFlow(const float* Ix, const float* Iy, const f
 
     float sumIx2 = 0, sumIy2 = 0, sumIxIy = 0, sumIxIt = 0, sumIyIt = 0;
 
-    for (int wy = -WIN_SIZE / 2; wy <= WIN_SIZE / 2; wy++) {
-        for (int wx = -WIN_SIZE / 2; wx <= WIN_SIZE / 2; wx++) {
-            int idx = (y + wy) * stride + (x + wx);
-            sumIx2 += Ix[idx] * Ix[idx];
-            sumIy2 += Iy[idx] * Iy[idx];
-            sumIxIy += Ix[idx] * Iy[idx];
-            sumIxIt += Ix[idx] * It[idx];
-            sumIyIt += Iy[idx] * It[idx];
-        }
-    }
+    int idx = (y + -2) * stride + (x + -2);
+    sumIx2 += Ix[idx] * Ix[idx];
+    sumIy2 += Iy[idx] * Iy[idx];
+    sumIxIy += Ix[idx] * Iy[idx];
+    sumIxIt += Ix[idx] * It[idx];
+    sumIyIt += Iy[idx] * It[idx];
+
+    idx = (y + -2) * stride + (x + -1);
+    sumIx2 += Ix[idx] * Ix[idx];
+    sumIy2 += Iy[idx] * Iy[idx];
+    sumIxIy += Ix[idx] * Iy[idx];
+    sumIxIt += Ix[idx] * It[idx];
+    sumIyIt += Iy[idx] * It[idx];
+
+    idx = (y + -2) * stride + (x + 0);
+    sumIx2 += Ix[idx] * Ix[idx];
+    sumIy2 += Iy[idx] * Iy[idx];
+    sumIxIy += Ix[idx] * Iy[idx];
+    sumIxIt += Ix[idx] * It[idx];
+    sumIyIt += Iy[idx] * It[idx];
+
+    idx = (y + -2) * stride + (x + 1);
+    sumIx2 += Ix[idx] * Ix[idx];
+    sumIy2 += Iy[idx] * Iy[idx];
+    sumIxIy += Ix[idx] * Iy[idx];
+    sumIxIt += Ix[idx] * It[idx];
+    sumIyIt += Iy[idx] * It[idx];
+
+    idx = (y + -2) * stride + (x + 2);
+    sumIx2 += Ix[idx] * Ix[idx];
+    sumIy2 += Iy[idx] * Iy[idx];
+    sumIxIy += Ix[idx] * Iy[idx];
+    sumIxIt += Ix[idx] * It[idx];
+    sumIyIt += Iy[idx] * It[idx];
+
+    idx = (y + -1) * stride + (x + -2);
+    sumIx2 += Ix[idx] * Ix[idx];
+    sumIy2 += Iy[idx] * Iy[idx];
+    sumIxIy += Ix[idx] * Iy[idx];
+    sumIxIt += Ix[idx] * It[idx];
+    sumIyIt += Iy[idx] * It[idx];
+
+    idx = (y + -1) * stride + (x + -1);
+    sumIx2 += Ix[idx] * Ix[idx];
+    sumIy2 += Iy[idx] * Iy[idx];
+    sumIxIy += Ix[idx] * Iy[idx];
+    sumIxIt += Ix[idx] * It[idx];
+    sumIyIt += Iy[idx] * It[idx];
+
+    idx = (y + -1) * stride + (x + 0);
+    sumIx2 += Ix[idx] * Ix[idx];
+    sumIy2 += Iy[idx] * Iy[idx];
+    sumIxIy += Ix[idx] * Iy[idx];
+    sumIxIt += Ix[idx] * It[idx];
+    sumIyIt += Iy[idx] * It[idx];
+
+    idx = (y + -1) * stride + (x + 1);
+    sumIx2 += Ix[idx] * Ix[idx];
+    sumIy2 += Iy[idx] * Iy[idx];
+    sumIxIy += Ix[idx] * Iy[idx];
+    sumIxIt += Ix[idx] * It[idx];
+    sumIyIt += Iy[idx] * It[idx];
+
+    idx = (y + -1) * stride + (x + 2);
+    sumIx2 += Ix[idx] * Ix[idx];
+    sumIy2 += Iy[idx] * Iy[idx];
+    sumIxIy += Ix[idx] * Iy[idx];
+    sumIxIt += Ix[idx] * It[idx];
+    sumIyIt += Iy[idx] * It[idx];
+
+    idx = (y + 0) * stride + (x + -2);
+    sumIx2 += Ix[idx] * Ix[idx];
+    sumIy2 += Iy[idx] * Iy[idx];
+    sumIxIy += Ix[idx] * Iy[idx];
+    sumIxIt += Ix[idx] * It[idx];
+    sumIyIt += Iy[idx] * It[idx];
+
+    idx = (y + 0) * stride + (x + -1);
+    sumIx2 += Ix[idx] * Ix[idx];
+    sumIy2 += Iy[idx] * Iy[idx];
+    sumIxIy += Ix[idx] * Iy[idx];
+    sumIxIt += Ix[idx] * It[idx];
+    sumIyIt += Iy[idx] * It[idx];
+
+    idx = (y + 0) * stride + (x + 0);
+    sumIx2 += Ix[idx] * Ix[idx];
+    sumIy2 += Iy[idx] * Iy[idx];
+    sumIxIy += Ix[idx] * Iy[idx];
+    sumIxIt += Ix[idx] * It[idx];
+    sumIyIt += Iy[idx] * It[idx];
+
+    idx = (y + 0) * stride + (x + 1);
+    sumIx2 += Ix[idx] * Ix[idx];
+    sumIy2 += Iy[idx] * Iy[idx];
+    sumIxIy += Ix[idx] * Iy[idx];
+    sumIxIt += Ix[idx] * It[idx];
+    sumIyIt += Iy[idx] * It[idx];
+
+    idx = (y + 0) * stride + (x + 2);
+    sumIx2 += Ix[idx] * Ix[idx];
+    sumIy2 += Iy[idx] * Iy[idx];
+    sumIxIy += Ix[idx] * Iy[idx];
+    sumIxIt += Ix[idx] * It[idx];
+    sumIyIt += Iy[idx] * It[idx];
+
+    idx = (y + 1) * stride + (x + -2);
+    sumIx2 += Ix[idx] * Ix[idx];
+    sumIy2 += Iy[idx] * Iy[idx];
+    sumIxIy += Ix[idx] * Iy[idx];
+    sumIxIt += Ix[idx] * It[idx];
+    sumIyIt += Iy[idx] * It[idx];
+
+    idx = (y + 1) * stride + (x + -1);
+    sumIx2 += Ix[idx] * Ix[idx];
+    sumIy2 += Iy[idx] * Iy[idx];
+    sumIxIy += Ix[idx] * Iy[idx];
+    sumIxIt += Ix[idx] * It[idx];
+    sumIyIt += Iy[idx] * It[idx];
+
+    idx = (y + 1) * stride + (x + 0);
+    sumIx2 += Ix[idx] * Ix[idx];
+    sumIy2 += Iy[idx] * Iy[idx];
+    sumIxIy += Ix[idx] * Iy[idx];
+    sumIxIt += Ix[idx] * It[idx];
+    sumIyIt += Iy[idx] * It[idx];
+
+    idx = (y + 1) * stride + (x + 1);
+    sumIx2 += Ix[idx] * Ix[idx];
+    sumIy2 += Iy[idx] * Iy[idx];
+    sumIxIy += Ix[idx] * Iy[idx];
+    sumIxIt += Ix[idx] * It[idx];
+    sumIyIt += Iy[idx] * It[idx];
+
+    idx = (y + 1) * stride + (x + 2);
+    sumIx2 += Ix[idx] * Ix[idx];
+    sumIy2 += Iy[idx] * Iy[idx];
+    sumIxIy += Ix[idx] * Iy[idx];
+    sumIxIt += Ix[idx] * It[idx];
+    sumIyIt += Iy[idx] * It[idx];
+
+    idx = (y + 2) * stride + (x + -2);
+    sumIx2 += Ix[idx] * Ix[idx];
+    sumIy2 += Iy[idx] * Iy[idx];
+    sumIxIy += Ix[idx] * Iy[idx];
+    sumIxIt += Ix[idx] * It[idx];
+    sumIyIt += Iy[idx] * It[idx];
+
+    idx = (y + 2) * stride + (x + -1);
+    sumIx2 += Ix[idx] * Ix[idx];
+    sumIy2 += Iy[idx] * Iy[idx];
+    sumIxIy += Ix[idx] * Iy[idx];
+    sumIxIt += Ix[idx] * It[idx];
+    sumIyIt += Iy[idx] * It[idx];
+
+    idx = (y + 2) * stride + (x + 0);
+    sumIx2 += Ix[idx] * Ix[idx];
+    sumIy2 += Iy[idx] * Iy[idx];
+    sumIxIy += Ix[idx] * Iy[idx];
+    sumIxIt += Ix[idx] * It[idx];
+    sumIyIt += Iy[idx] * It[idx];
+
+    idx = (y + 2) * stride + (x + 1);
+    sumIx2 += Ix[idx] * Ix[idx];
+    sumIy2 += Iy[idx] * Iy[idx];
+    sumIxIy += Ix[idx] * Iy[idx];
+    sumIxIt += Ix[idx] * It[idx];
+    sumIyIt += Iy[idx] * It[idx];
+
+    idx = (y + 2) * stride + (x + 2);
+    sumIx2 += Ix[idx] * Ix[idx];
+    sumIy2 += Iy[idx] * Iy[idx];
+    sumIxIy += Ix[idx] * Iy[idx];
+    sumIxIt += Ix[idx] * It[idx];
+    sumIyIt += Iy[idx] * It[idx];
 
     float det = sumIx2 * sumIy2 - sumIxIy * sumIxIy;
     if (fabs(det) > 1e-6) {
@@ -264,7 +428,7 @@ int main(int argc, char** argv) {
 
 #if DISPLAY_STREAMS
         cv::imshow("Input Frame Display", frame);
-        double fps = cap.get(cv::CAP_PROP_FPS);
+        float fps = cap.get(cv::CAP_PROP_FPS);
         int delay = static_cast<int>(1000 / fps); // Delay between frames in milliseconds
 
         if (cv::waitKey(delay) == 'q') {

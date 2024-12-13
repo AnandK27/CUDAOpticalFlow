@@ -9,11 +9,13 @@
 using namespace std;
 
 #define WIN_SIZE 5  // Window size for Lucas-Kanade method
-#define BLOCK_SIZE 32
+#define BLOCK_SIZE 16
 
-#define DISPLAY_STREAMS true
+#define DISPLAY_STREAMS false
 #define CPU false
 #define DEBUG false
+
+#define N 4
 
 #define CHECK(call) \
 { \
@@ -27,9 +29,9 @@ using namespace std;
 } \
 
 /********************************
-* 
+*
 *   CPU Code
-* 
+*
 *********************************/
 // Compute image gradients using Sobel operator
 void computeGradients(const unsigned char* I1, int width, int height, int stride, float* Ix, float* Iy, float* It, const unsigned char* I2) {
@@ -98,8 +100,8 @@ __global__ void cudaComputeGradients(float* Ix, float* Iy, float* It, const unsi
 __global__ void cudaComputeGradients2(float* Ix, float* Iy, float* It, const unsigned char* I1, const unsigned char* I2, int width, int height)
 {
 
-    __shared__ int I1_shared[BLOCK_SIZE + 2][BLOCK_SIZE + 2];
-    __shared__ int I2_shared[BLOCK_SIZE + 2][BLOCK_SIZE + 2];
+    __shared__ int I1_shared[BLOCK_SIZE / N + 2][BLOCK_SIZE + 2];
+    __shared__ int I2_shared[BLOCK_SIZE / N + 2][BLOCK_SIZE + 2];
 
     int x = threadIdx.x + blockIdx.x * blockDim.x;
     int y = threadIdx.y + blockIdx.y * blockDim.y;
@@ -179,9 +181,9 @@ __global__ void cudaComputeOpticalFlow(const float* Ix, const float* Iy, const f
 
 __global__ void cudaComputeOpticalFlow2(const float* Ix, const float* Iy, const float* It, int width, int height, int stride, float* u, float* v)
 {
-    __shared__ float Ix_shared[BLOCK_SIZE + WIN_SIZE - 1][BLOCK_SIZE + WIN_SIZE - 1];
-    __shared__ float Iy_shared[BLOCK_SIZE + WIN_SIZE - 1][BLOCK_SIZE + WIN_SIZE - 1];
-    __shared__ float It_shared[BLOCK_SIZE + WIN_SIZE - 1][BLOCK_SIZE + WIN_SIZE - 1];
+    __shared__ float Ix_shared[BLOCK_SIZE / N + WIN_SIZE - 1][BLOCK_SIZE + WIN_SIZE - 1];
+    __shared__ float Iy_shared[BLOCK_SIZE / N + WIN_SIZE - 1][BLOCK_SIZE + WIN_SIZE - 1];
+    __shared__ float It_shared[BLOCK_SIZE / N + WIN_SIZE - 1][BLOCK_SIZE + WIN_SIZE - 1];
 
     int x = threadIdx.x + blockIdx.x * blockDim.x;
     int y = threadIdx.y + blockIdx.y * blockDim.y;
@@ -319,11 +321,11 @@ __global__ void cudaComputeOpticalFlow2(const float* Ix, const float* Iy, const 
 __global__ void cudaComputeOpticalFlow3(const float* Ix, const float* Iy, const float* It, int width, int height, int stride, float* u, float* v)
 {
 
-    __shared__ float Ix2[BLOCK_SIZE + WIN_SIZE - 1][BLOCK_SIZE + WIN_SIZE - 1];
-    __shared__ float Iy2[BLOCK_SIZE + WIN_SIZE - 1][BLOCK_SIZE + WIN_SIZE - 1];
-    __shared__ float IxIy[BLOCK_SIZE + WIN_SIZE - 1][BLOCK_SIZE + WIN_SIZE - 1];
-    __shared__ float IxIt[BLOCK_SIZE + WIN_SIZE - 1][BLOCK_SIZE + WIN_SIZE - 1];
-    __shared__ float IyIt[BLOCK_SIZE + WIN_SIZE - 1][BLOCK_SIZE + WIN_SIZE - 1];
+    __shared__ float Ix2[BLOCK_SIZE / 4 + WIN_SIZE - 1][BLOCK_SIZE + WIN_SIZE - 1];
+    __shared__ float Iy2[BLOCK_SIZE / 4 + WIN_SIZE - 1][BLOCK_SIZE + WIN_SIZE - 1];
+    __shared__ float IxIy[BLOCK_SIZE / 4 + WIN_SIZE - 1][BLOCK_SIZE + WIN_SIZE - 1];
+    __shared__ float IxIt[BLOCK_SIZE / 4 + WIN_SIZE - 1][BLOCK_SIZE + WIN_SIZE - 1];
+    __shared__ float IyIt[BLOCK_SIZE / 4 + WIN_SIZE - 1][BLOCK_SIZE + WIN_SIZE - 1];
 
     int x = threadIdx.x + blockIdx.x * blockDim.x;
     int y = threadIdx.y + blockIdx.y * blockDim.y;
@@ -567,14 +569,20 @@ int main(int argc, char** argv) {
     // CPU Memory Allocation
     cv::Mat frame;
     unsigned char* temp = NULL;
-    unsigned char* I1 = (unsigned char*)malloc(height * stride);
-    unsigned char* I2 = (unsigned char*)malloc(height * stride);
+    unsigned char* I1; // = (unsigned char*)malloc(height * stride);
+    unsigned char* I2; // = (unsigned char*)malloc(height * stride);
     float* Ix = (float*)calloc(height * stride, sizeof(float));
     float* Iy = (float*)calloc(height * stride, sizeof(float));
     float* It = (float*)calloc(height * stride, sizeof(float));
-    float* u = (float*)calloc(height * stride, sizeof(float));
-    float* v = (float*)calloc(height * stride, sizeof(float));
+    float* u; // = (float*)calloc(height * stride, sizeof(float));
+    float* v; // = (float*)calloc(height * stride, sizeof(float));
     unsigned char* output = (unsigned char*)calloc(height * stride * 3, sizeof(unsigned char));
+
+    // DMA Alloc
+    cudaHostAlloc((void**)&I1, height * width, cudaHostAllocDefault);
+    cudaHostAlloc((void**)&I2, height * width, cudaHostAllocDefault);
+    cudaHostAlloc((void**)&u, size, cudaHostAllocDefault);
+    cudaHostAlloc((void**)&v, size, cudaHostAllocDefault);
 
     // GPU Memory Allocation
     unsigned char* d_I1, * d_I2;
@@ -632,7 +640,8 @@ int main(int argc, char** argv) {
         d_I2 = temp;
 
         memcpy(I2, frame.data, height * width * sizeof(unsigned char));
-        cudaMemcpy(d_I2, frame.data, height * width * sizeof(unsigned char), cudaMemcpyHostToDevice);
+        //cudaMemcpy(d_I2, frame.data, height * width * sizeof(unsigned char), cudaMemcpyHostToDevice);
+        cudaMemcpyAsync(d_I2, I2, height * width * sizeof(unsigned char), cudaMemcpyHostToDevice);
 
 #if CPU
         computeGradients(I2, width, height, stride, Ix, Iy, It, I1);
@@ -640,9 +649,9 @@ int main(int argc, char** argv) {
         //visualizeOpticalFlow(u, v, width, height, stride, output);
 #endif
 
-        dim3 threadsPerBlock(BLOCK_SIZE, BLOCK_SIZE);
-        dim3 numBlocks(width / threadsPerBlock.x, height / threadsPerBlock.y);      
-        cudaComputeGradients2<< <numBlocks, threadsPerBlock >> > (d_Ix, d_Iy, d_It, d_I1, d_I2, width, height);
+        dim3 threadsPerBlock(BLOCK_SIZE, BLOCK_SIZE / N);
+        dim3 numBlocks(width / threadsPerBlock.x, height / threadsPerBlock.y);
+        cudaComputeGradients2 << <numBlocks, threadsPerBlock >> > (d_Ix, d_Iy, d_It, d_I1, d_I2, width, height);
 
 #if DEBUG
         cudaMemcpy(Ix_cpu, d_Ix, size, cudaMemcpyDeviceToHost);
@@ -661,12 +670,14 @@ int main(int argc, char** argv) {
         writeToFile(It, width, height, "It.csv");*/
 #endif
 
-        dim3 threadsPerBlock2(BLOCK_SIZE, BLOCK_SIZE / 4);
+        dim3 threadsPerBlock2(BLOCK_SIZE, BLOCK_SIZE / N);
         dim3 numBlocks2(width / threadsPerBlock2.x, height / threadsPerBlock2.y);
-        cudaComputeOpticalFlow3 << <numBlocks2, threadsPerBlock2 >> > (d_Ix, d_Iy, d_It, width, height, stride, d_u, d_v);
+        cudaComputeOpticalFlow2 << <numBlocks2, threadsPerBlock2 >> > (d_Ix, d_Iy, d_It, width, height, stride, d_u, d_v);
 
-        cudaMemcpy(u_cpu, d_u, size, cudaMemcpyDeviceToHost);
-        cudaMemcpy(v_cpu, d_v, size, cudaMemcpyDeviceToHost);
+        cudaMemcpyAsync(u_cpu, d_u, size, cudaMemcpyDeviceToHost);
+        cudaMemcpyAsync(v_cpu, d_v, size, cudaMemcpyDeviceToHost);
+        //cudaMemcpy(u_cpu, d_u, size, cudaMemcpyDeviceToHost);
+        //cudaMemcpy(v_cpu, d_v, size, cudaMemcpyDeviceToHost);
 
 #if DISPLAY_STREAMS
         visualizeOpticalFlow(u_cpu, v_cpu, width, height, stride, output);
@@ -679,11 +690,11 @@ int main(int argc, char** argv) {
             compare(v_cpu, v, width, height, "V");
         }
 
-       /* writeToFile(u, width, height, "U.csv");
-        writeToFile(v, width, height, "V.csv");
-        
-        writeToFile(u_cpu, width, height, "U_gpu.csv");
-        writeToFile(v_cpu, width, height, "V_gpu.csv");*/
+        /* writeToFile(u, width, height, "U.csv");
+         writeToFile(v, width, height, "V.csv");
+
+         writeToFile(u_cpu, width, height, "U_gpu.csv");
+         writeToFile(v_cpu, width, height, "V_gpu.csv");*/
 #endif
 
         time_t tock = time(NULL);
@@ -710,13 +721,18 @@ int main(int argc, char** argv) {
 
     cout << "Calculated FPS: " << calc_fps << "\n";
 
-    free(I1);
-    free(I2);
+    //free(I1);
+    //free(I2);
     free(Ix);
     free(Iy);
     free(It);
-    free(u);
-    free(v);
+    //free(u);
+    //free(v);
+
+    cudaFreeHost(I1);
+    cudaFreeHost(I2);
+    cudaFreeHost(u);
+    cudaFreeHost(v);
 
     cudaFree(d_I1);
     cudaFree(d_I2);

@@ -11,9 +11,11 @@ using namespace std;
 #define WIN_SIZE 5  // Window size for Lucas-Kanade method
 #define BLOCK_SIZE 32
 
-#define DISPLAY_STREAMS false
+#define DISPLAY_STREAMS true
 #define CPU false
 #define DEBUG false
+
+#define N 4
 
 #define CHECK(call) \
 { \
@@ -26,17 +28,10 @@ using namespace std;
     } \
 } \
 
-struct Gradients
-{   
-    float Ix;
-    float Iy;
-    float It;
-};
-
 /********************************
-*
+* 
 *   CPU Code
-*
+* 
 *********************************/
 // Compute image gradients using Sobel operator
 void computeGradients(const unsigned char* I1, int width, int height, int stride, float* Ix, float* Iy, float* It, const unsigned char* I2) {
@@ -101,56 +96,6 @@ __global__ void cudaComputeGradients(float* Ix, float* Iy, float* It, const unsi
     }
 }
 
-//kernel to get Ix, Iy and It of two images using shared memory
-__global__ void cudaComputeGradients2(Gradients* grad, const unsigned char* I1, const unsigned char* I2, int width, int height)
-{
-
-    __shared__ int I1_shared[BLOCK_SIZE + 2][BLOCK_SIZE + 2];
-    __shared__ int I2_shared[BLOCK_SIZE + 2][BLOCK_SIZE + 2];
-
-    int x = threadIdx.x + blockIdx.x * blockDim.x;
-    int y = threadIdx.y + blockIdx.y * blockDim.y;
-    int idx = x + y * width;
-
-    I1_shared[threadIdx.y + 1][threadIdx.x + 1] = I1[idx];
-    I2_shared[threadIdx.y + 1][threadIdx.x + 1] = I2[idx];
-
-
-    if (threadIdx.x == 0 && x > 0)
-    {
-        I1_shared[threadIdx.y + 1][threadIdx.x] = I1[idx - 1];
-        I2_shared[threadIdx.y + 1][threadIdx.x] = I2[idx - 1];
-    }
-
-    if (threadIdx.x == blockDim.x - 1 && x < width - 1)
-    {
-        I1_shared[threadIdx.y + 1][threadIdx.x + 2] = I1[idx + 1];
-        I2_shared[threadIdx.y + 1][threadIdx.x + 2] = I2[idx + 1];
-    }
-
-    if (threadIdx.y == 0 && y > 0)
-    {
-        I1_shared[threadIdx.y][threadIdx.x + 1] = I1[idx - width];
-        I2_shared[threadIdx.y][threadIdx.x + 1] = I2[idx - width];
-    }
-
-    if (threadIdx.y == blockDim.y - 1 && y < height - 1)
-    {
-        I1_shared[threadIdx.y + 2][threadIdx.x + 1] = I1[idx + width];
-        I2_shared[threadIdx.y + 2][threadIdx.x + 1] = I2[idx + width];
-    }
-
-    // Wait for all threads to finish copying
-    __syncthreads();
-
-    if (x > 0 && x < width - 1 && y > 0 && y < height - 1) {
-        Gradients* temp = &grad[idx];
-        temp->Ix = (I1_shared[threadIdx.y + 1][threadIdx.x + 2] - I1_shared[threadIdx.y + 1][threadIdx.x] + I2_shared[threadIdx.y + 1][threadIdx.x + 2] - I2_shared[threadIdx.y + 1][threadIdx.x]) / 4.0f;
-        temp->Iy = (I1_shared[threadIdx.y + 2][threadIdx.x + 1] - I1_shared[threadIdx.y][threadIdx.x + 1] + I2_shared[threadIdx.y + 2][threadIdx.x + 1] - I2_shared[threadIdx.y][threadIdx.x + 1]) / 4.0f;
-        temp->It = (I2_shared[threadIdx.y + 1][threadIdx.x + 1] - I1_shared[threadIdx.y + 1][threadIdx.x + 1]);
-    }
-}
-
 
 __global__ void cudaComputeOpticalFlow(const float* Ix, const float* Iy, const float* It, int width, int height, int stride, float* u, float* v)
 {
@@ -171,154 +116,6 @@ __global__ void cudaComputeOpticalFlow(const float* Ix, const float* Iy, const f
             sumIxIy += Ix[idx] * Iy[idx];
             sumIxIt += Ix[idx] * It[idx];
             sumIyIt += Iy[idx] * It[idx];
-        }
-    }
-
-    float det = sumIx2 * sumIy2 - sumIxIy * sumIxIy;
-    if (fabs(det) > 1e-6) {
-        u[y * stride + x] = (sumIy2 * -sumIxIt - sumIxIy * -sumIyIt) / det;
-        v[y * stride + x] = (sumIx2 * -sumIyIt - sumIxIy * -sumIxIt) / det;
-    }
-    else {
-        u[y * stride + x] = 0;
-        v[y * stride + x] = 0;
-    }
-}
-
-__global__ void cudaComputeOpticalFlow2(const Gradients* grad, int width, int height, int stride, float* u, float* v)
-{
-    __shared__ float Ix_shared[BLOCK_SIZE + WIN_SIZE - 1][BLOCK_SIZE + WIN_SIZE - 1];
-    __shared__ float Iy_shared[BLOCK_SIZE + WIN_SIZE - 1][BLOCK_SIZE + WIN_SIZE - 1];
-    __shared__ float It_shared[BLOCK_SIZE + WIN_SIZE - 1][BLOCK_SIZE + WIN_SIZE - 1];
-
-    int x = threadIdx.x + blockIdx.x * blockDim.x;
-    int y = threadIdx.y + blockIdx.y * blockDim.y;
-
-    int idx = y * stride + x;
-
-    if (y < height && x < width)
-    {
-        Gradients temp = grad[idx];
-        Ix_shared[threadIdx.y + WIN_SIZE / 2][threadIdx.x + WIN_SIZE / 2] = temp.Ix;
-        Iy_shared[threadIdx.y + WIN_SIZE / 2][threadIdx.x + WIN_SIZE / 2] = temp.Iy;
-        It_shared[threadIdx.y + WIN_SIZE / 2][threadIdx.x + WIN_SIZE / 2] = temp.It;
-    }
-
-    // Left Edge
-    if (threadIdx.x < WIN_SIZE / 2 && x >= WIN_SIZE / 2)
-    {
-        Gradients temp = grad[idx - WIN_SIZE / 2];
-        Ix_shared[threadIdx.y + WIN_SIZE / 2][threadIdx.x] = temp.Ix;
-        Iy_shared[threadIdx.y + WIN_SIZE / 2][threadIdx.x] = temp.Iy;
-        It_shared[threadIdx.y + WIN_SIZE / 2][threadIdx.x] = temp.It;
-    }
-
-    // Right Edge
-    if (threadIdx.x >= blockDim.x - WIN_SIZE / 2 && x < width - WIN_SIZE / 2)
-    {
-        Gradients temp = grad[idx + WIN_SIZE / 2];
-        Ix_shared[threadIdx.y + WIN_SIZE / 2][threadIdx.x + WIN_SIZE - 1] = temp.Ix;
-        Iy_shared[threadIdx.y + WIN_SIZE / 2][threadIdx.x + WIN_SIZE - 1] = temp.Iy;
-        It_shared[threadIdx.y + WIN_SIZE / 2][threadIdx.x + WIN_SIZE - 1] = temp.It;
-    }
-
-    // Top Edge
-    if (threadIdx.y < WIN_SIZE / 2 && y >= WIN_SIZE / 2)
-    {
-        Gradients temp = grad[idx - WIN_SIZE / 2 * stride];
-        Ix_shared[threadIdx.y][threadIdx.x + WIN_SIZE / 2] = temp.Ix;
-        Iy_shared[threadIdx.y][threadIdx.x + WIN_SIZE / 2] = temp.Iy;
-        It_shared[threadIdx.y][threadIdx.x + WIN_SIZE / 2] = temp.It;
-    }
-
-    // Bottom Edge
-    if (threadIdx.y >= blockDim.y - WIN_SIZE / 2 && y < height - WIN_SIZE / 2)
-    {
-        Gradients temp = grad[idx + WIN_SIZE / 2 * stride];
-        Ix_shared[threadIdx.y + WIN_SIZE - 1][threadIdx.x + WIN_SIZE / 2] = temp.Ix;
-        Iy_shared[threadIdx.y + WIN_SIZE - 1][threadIdx.x + WIN_SIZE / 2] = temp.Iy;
-        It_shared[threadIdx.y + WIN_SIZE - 1][threadIdx.x + WIN_SIZE / 2] = temp.It;
-    }
-
-    // Top-Left Corner
-    if (threadIdx.x == 0 && threadIdx.y == 0 && x > 0 && y > 0)
-    {
-        for (int wy = -WIN_SIZE / 2; wy < 0; wy++)
-        {
-            for (int wx = -WIN_SIZE / 2; wx < 0; wx++)
-            {
-                Gradients temp = grad[idx + (wy * stride) + wx];
-                Ix_shared[threadIdx.y + WIN_SIZE / 2 + wy][threadIdx.x + WIN_SIZE / 2 + wx] = temp.Ix;
-                Iy_shared[threadIdx.y + WIN_SIZE / 2 + wy][threadIdx.x + WIN_SIZE / 2 + wx] = temp.Iy;
-                It_shared[threadIdx.y + WIN_SIZE / 2 + wy][threadIdx.x + WIN_SIZE / 2 + wx] = temp.It;
-            }
-        }
-    }
-
-    // Top-Right Corner
-    if (threadIdx.x == (blockDim.x - 1) && threadIdx.y == 0 && x < (width - WIN_SIZE / 2) && y > 0)
-    {
-        for (int wy = -WIN_SIZE / 2; wy < 0; wy++)
-        {
-            for (int wx = 1; wx <= WIN_SIZE / 2; wx++)
-            {
-                Gradients temp = grad[idx + (wy * stride) + wx];
-                Ix_shared[threadIdx.y + WIN_SIZE / 2 + wy][threadIdx.x + WIN_SIZE / 2 + wx] = temp.Ix;
-                Iy_shared[threadIdx.y + WIN_SIZE / 2 + wy][threadIdx.x + WIN_SIZE / 2 + wx] = temp.Iy;
-                It_shared[threadIdx.y + WIN_SIZE / 2 + wy][threadIdx.x + WIN_SIZE / 2 + wx] = temp.It;
-            }
-        }
-    }
-
-    // Bottom-Left
-    if (threadIdx.x == 0 && threadIdx.y == (blockDim.y - 1) && x > 0 && y < (height - WIN_SIZE / 2))
-    {
-        for (int wy = 1; wy <= WIN_SIZE / 2; wy++)
-        {
-            for (int wx = -WIN_SIZE / 2; wx < 0; wx++)
-            {
-                Gradients temp = grad[idx + (wy * stride) + wx];
-                Ix_shared[threadIdx.y + WIN_SIZE / 2 + wy][threadIdx.x + WIN_SIZE / 2 + wx] = temp.Ix;
-                Iy_shared[threadIdx.y + WIN_SIZE / 2 + wy][threadIdx.x + WIN_SIZE / 2 + wx] = temp.Iy;
-                It_shared[threadIdx.y + WIN_SIZE / 2 + wy][threadIdx.x + WIN_SIZE / 2 + wx] = temp.It;
-            }
-        }
-    }
-
-    // Bottom-Right
-    if (threadIdx.x == (blockDim.x - 1) && threadIdx.y == (blockDim.y - 1) && x < (width - WIN_SIZE / 2) && y < (height - WIN_SIZE / 2))
-    {
-        for (int wy = 1; wy <= WIN_SIZE / 2; wy++)
-        {
-            for (int wx = 1; wx <= WIN_SIZE / 2; wx++)
-            {
-                Gradients temp = grad[idx + (wy * stride) + wx];
-                Ix_shared[threadIdx.y + WIN_SIZE / 2 + wy][threadIdx.x + WIN_SIZE / 2 + wx] = temp.Ix;
-                Iy_shared[threadIdx.y + WIN_SIZE / 2 + wy][threadIdx.x + WIN_SIZE / 2 + wx] = temp.Iy;
-                It_shared[threadIdx.y + WIN_SIZE / 2 + wy][threadIdx.x + WIN_SIZE / 2 + wx] = temp.It;
-            }
-        }
-    }
-
-    __syncthreads();
-    if (x < WIN_SIZE / 2 || x >= width - WIN_SIZE / 2 || y < WIN_SIZE / 2 || y >= height - WIN_SIZE / 2)
-    {
-        u[y * stride + x] = 0;
-        v[y * stride + x] = 0;
-        return;
-    }
-
-    float sumIx2 = 0, sumIy2 = 0, sumIxIy = 0, sumIxIt = 0, sumIyIt = 0;
-    // Compute the sums
-    for (int wy = -WIN_SIZE / 2; wy <= WIN_SIZE / 2; wy++)
-    {
-        for (int wx = -WIN_SIZE / 2; wx <= WIN_SIZE / 2; wx++)
-        {
-            sumIx2 += Ix_shared[threadIdx.y + wy + WIN_SIZE / 2][threadIdx.x + wx + WIN_SIZE / 2] * Ix_shared[threadIdx.y + wy + WIN_SIZE / 2][threadIdx.x + wx + WIN_SIZE / 2];
-            sumIy2 += Iy_shared[threadIdx.y + wy + WIN_SIZE / 2][threadIdx.x + wx + WIN_SIZE / 2] * Iy_shared[threadIdx.y + wy + WIN_SIZE / 2][threadIdx.x + wx + WIN_SIZE / 2];
-            sumIxIy += Ix_shared[threadIdx.y + wy + WIN_SIZE / 2][threadIdx.x + wx + WIN_SIZE / 2] * Iy_shared[threadIdx.y + wy + WIN_SIZE / 2][threadIdx.x + wx + WIN_SIZE / 2];
-            sumIxIt += Ix_shared[threadIdx.y + wy + WIN_SIZE / 2][threadIdx.x + wx + WIN_SIZE / 2] * It_shared[threadIdx.y + wy + WIN_SIZE / 2][threadIdx.x + wx + WIN_SIZE / 2];
-            sumIyIt += Iy_shared[threadIdx.y + wy + WIN_SIZE / 2][threadIdx.x + wx + WIN_SIZE / 2] * It_shared[threadIdx.y + wy + WIN_SIZE / 2][threadIdx.x + wx + WIN_SIZE / 2];
         }
     }
 
@@ -412,8 +209,22 @@ int main(int argc, char** argv) {
     int stride = width;
     int size = width * height * sizeof(float);
 
+    double fps = cap.get(cv::CAP_PROP_FPS);
+    int delay = static_cast<int>(1000 / fps); // Delay between frames in milliseconds
+
+    // Create a video writer object
+    cv::VideoWriter writer("output4.mp4", cv::VideoWriter::fourcc('h', '2', '6', '4'), fps, cv::Size(width * 2, height));
+
+    if (!writer.isOpened()) {
+        std::cerr << "Error opening video writer" << std::endl;
+        return -1;
+    }
+
+    
+
     // CPU Memory Allocation
     cv::Mat frame;
+    cv::Mat res;
     unsigned char* temp = NULL;
     unsigned char* I1 = (unsigned char*)malloc(height * stride);
     unsigned char* I2 = (unsigned char*)malloc(height * stride);
@@ -426,21 +237,23 @@ int main(int argc, char** argv) {
 
     // GPU Memory Allocation
     unsigned char* d_I1, * d_I2;
-    Gradients* d_grad;
-    float* d_u, * d_v;
+    float* d_Ix, * d_Iy, * d_It, * d_u, * d_v;
 
     cudaMalloc(&d_I1, width * height);
     cudaMalloc(&d_I2, width * height);
-    cudaMalloc(&d_grad, size * 3);
+    cudaMalloc(&d_Ix, size);
+    cudaMalloc(&d_Iy, size);
+    cudaMalloc(&d_It, size);
     cudaMalloc(&d_u, size);
     cudaMalloc(&d_v, size);
 
-    cudaMemset(&d_grad, 0, size * 3);
+    cudaMemset(&d_Ix, 0, size);
+    cudaMemset(&d_Iy, 0, size);
+    cudaMemset(&d_It, 0, size);
     cudaMemset(&d_u, 0, size);
     cudaMemset(&d_v, 0, size);
 
     // Debug 
-    Gradients* grad_cpu = (Gradients*)malloc(size * 3);
     float* Ix_cpu = (float*)malloc(size);
     float* Iy_cpu = (float*)malloc(size);
     float* It_cpu = (float*)malloc(size);
@@ -458,14 +271,13 @@ int main(int argc, char** argv) {
         cv::resize(frame, frame, cv::Size(width, height));
 
 #if DISPLAY_STREAMS
-        cv::imshow("Input Frame Display", frame);
-        double fps = cap.get(cv::CAP_PROP_FPS);
-        int delay = static_cast<int>(1000 / fps); // Delay between frames in milliseconds
+        /*cv::imshow("Input Frame Display", frame);
+        
 
         if (cv::waitKey(delay) == 'q') {
             std::cout << "Exiting video playback" << std::endl;
             break;
-        }
+        }*/
 #endif
 
         frame_num++;
@@ -486,18 +298,14 @@ int main(int argc, char** argv) {
         //visualizeOpticalFlow(u, v, width, height, stride, output);
 #endif
 
-        dim3 threadsPerBlock(BLOCK_SIZE, BLOCK_SIZE);
-        dim3 numBlocks(width / threadsPerBlock.x, height / threadsPerBlock.y);
-        cudaComputeGradients2 << <numBlocks, threadsPerBlock >> > (d_grad, d_I1, d_I2, width, height);
+        dim3 threadsPerBlock(BLOCK_SIZE, BLOCK_SIZE / N);
+        dim3 numBlocks(width / threadsPerBlock.x, height / threadsPerBlock.y);      
+        cudaComputeGradients<< <numBlocks, threadsPerBlock >> > (d_Ix, d_Iy, d_It, d_I1, d_I2, width, height);
 
 #if DEBUG
-        cudaMemcpy(grad_cpu, d_grad, size * 3, cudaMemcpyDeviceToHost);
-        for (int i = 0; i < width * height; i++)
-        {
-            Ix_cpu[i] = grad_cpu[i].Ix;
-            Iy_cpu[i] = grad_cpu[i].Iy;
-            It_cpu[i] = grad_cpu[i].It;
-        }
+        cudaMemcpy(Ix_cpu, d_Ix, size, cudaMemcpyDeviceToHost);
+        cudaMemcpy(Iy_cpu, d_Iy, size, cudaMemcpyDeviceToHost);
+        cudaMemcpy(It_cpu, d_It, size, cudaMemcpyDeviceToHost);
 
         if (frame_num > 1)
         {
@@ -511,9 +319,9 @@ int main(int argc, char** argv) {
         writeToFile(It, width, height, "It.csv");*/
 #endif
 
-        dim3 threadsPerBlock2(BLOCK_SIZE, BLOCK_SIZE / 4);
+        dim3 threadsPerBlock2(BLOCK_SIZE, BLOCK_SIZE / N);
         dim3 numBlocks2(width / threadsPerBlock2.x, height / threadsPerBlock2.y);
-        cudaComputeOpticalFlow2 << <numBlocks2, threadsPerBlock2 >> > (d_grad, width, height, stride, d_u, d_v);
+        cudaComputeOpticalFlow << <numBlocks2, threadsPerBlock2 >> > (d_Ix, d_Iy, d_It, width, height, stride, d_u, d_v);
 
         cudaMemcpy(u_cpu, d_u, size, cudaMemcpyDeviceToHost);
         cudaMemcpy(v_cpu, d_v, size, cudaMemcpyDeviceToHost);
@@ -529,11 +337,11 @@ int main(int argc, char** argv) {
             compare(v_cpu, v, width, height, "V");
         }
 
-        /* writeToFile(u, width, height, "U.csv");
-         writeToFile(v, width, height, "V.csv");
-
-         writeToFile(u_cpu, width, height, "U_gpu.csv");
-         writeToFile(v_cpu, width, height, "V_gpu.csv");*/
+       /* writeToFile(u, width, height, "U.csv");
+        writeToFile(v, width, height, "V.csv");
+        
+        writeToFile(u_cpu, width, height, "U_gpu.csv");
+        writeToFile(v_cpu, width, height, "V_gpu.csv");*/
 #endif
 
         time_t tock = time(NULL);
@@ -554,9 +362,17 @@ int main(int argc, char** argv) {
             CV_RGB(118, 185, 0), //font color
             1);
 
-        cv::imshow("Optical Flow Display", opflow);
+        cv::cvtColor(frame, frame, cv::COLOR_GRAY2BGR);
+        std::vector<cv::Mat> mats = { frame, opflow };
+        cv::hconcat(mats, res);
+        writer.write(res);
+
+        //cv::imshow("Optical Flow Display", opflow);
 #endif
     }
+
+    cap.release();
+    writer.release();
 
     cout << "Calculated FPS: " << calc_fps << "\n";
 
@@ -570,11 +386,12 @@ int main(int argc, char** argv) {
 
     cudaFree(d_I1);
     cudaFree(d_I2);
-    cudaFree(d_grad);
+    cudaFree(d_Ix);
+    cudaFree(d_Iy);
+    cudaFree(d_It);
     cudaFree(d_u);
     cudaFree(d_v);
 
-    free(grad_cpu);
     free(Ix_cpu);
     free(Iy_cpu);
     free(It_cpu);
